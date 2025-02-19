@@ -4,6 +4,9 @@ import com.accesshr.emsbackend.Entity.LeaveRequest;
 import com.accesshr.emsbackend.Service.LeaveService.LeaveRequestServiceImpl;
 import com.accesshr.emsbackend.Util.HolidaysUtil;
 import com.accesshr.emsbackend.exceptions.ResourceNotFoundException;
+import com.azure.storage.blob.*;
+import com.azure.storage.blob.models.BlobProperties;
+import com.azure.storage.blob.models.BlobStorageException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -11,11 +14,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
+
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -30,8 +31,11 @@ public class LeaveRequestController {
     @Autowired
     private LeaveRequestServiceImpl leaveRequestServiceImpl;
 
-    @Value("${file.upload-dir}")
-    private String uploadDir;
+    @Value("${azure.storage.connection-string}")
+    private String connectionString;
+
+    @Value("${azure.storage.container-name}")
+    private String containerName;
 
     @PostMapping(value = "/submit", produces = "application/json")
     public ResponseEntity<?> submitLeaveRequest(
@@ -74,7 +78,7 @@ public class LeaveRequestController {
                         leaveStartDate, leaveEndDate, HolidaysUtil.getNationalHolidays(leaveStartDate.getYear())
                 );
                 if (requestedDays > 2 && medicalDocument != null) {
-                    String savedFilePath = saveFile(medicalDocument, "medicalDocument");
+                    String savedFilePath = uploadFIle(medicalDocument, "medicalDocument");
                     leaveRequest.setMedicalDocument(savedFilePath);
                 }
             }
@@ -83,19 +87,56 @@ public class LeaveRequestController {
         }catch (ResourceNotFoundException e){
             return new ResponseEntity<>(e.getMap(), HttpStatus.NOT_FOUND);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("An error occurred: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
         }
     }
 
-    private String saveFile(MultipartFile file, String fileType) throws IOException {
-        if (file != null && !file.isEmpty()) {
-            Path filePath = Paths.get(uploadDir, fileType + "-" + file.getOriginalFilename());
-            Files.createDirectories(filePath.getParent()); // Ensure directories exist
-            Files.write(filePath, file.getBytes());
-            return filePath.toString();
-        }
-        return null;
+    public String uploadFIle(MultipartFile file, String caption) throws IOException{
+        String blobFilename=file.getOriginalFilename();
+
+        BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
+                .connectionString(connectionString)
+                .buildClient();
+        BlobClient blobClient=blobServiceClient
+                .getBlobContainerClient(containerName)
+                .getBlobClient(blobFilename);
+
+        blobClient.upload(file.getInputStream(), file.getSize(), true);
+        String fileUrl=blobClient.getBlobUrl();
+
+        return fileUrl;
     }
+
+    private String saveFile(MultipartFile file, String fileType) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("The file cannot be null or empty.");
+        }
+
+        // Create a BlobContainerClient
+        BlobContainerClient blobContainerClient = new BlobClientBuilder()
+                .connectionString(connectionString)
+                .containerName(containerName)
+                .buildClient().getContainerClient();
+
+        String originalFilename = file.getOriginalFilename();
+        if (originalFilename == null) {
+            throw new IllegalArgumentException("Original filename cannot be null.");
+        }
+
+        String blobName = fileType + "-" + originalFilename;
+
+        // Log the blob name before uploading
+        System.out.println("Uploading to blob name: " + blobName);
+
+        // Upload the file to Blob Storage
+        BlobClient blobClient = blobContainerClient.getBlobClient(blobName);
+        blobClient.upload(file.getInputStream(), file.getSize(), true);
+
+        return blobName; // Return the blob name or URL if needed
+    }
+
+
+    // Save optional file to Azure Blob Storage
     private String saveOptionalFile(MultipartFile file, String fileType) throws IOException {
         if (file != null && !file.isEmpty()) {
             return saveFile(file, fileType);
@@ -198,21 +239,31 @@ public class LeaveRequestController {
     @GetMapping("/fileSize")
     public ResponseEntity<Map<String, Long>> getFileSize(@RequestParam String fileName) {
         try {
-            Path filePath = Paths.get(uploadDir, fileName); // Construct the file path
-            File file = filePath.toFile(); // Convert to File object
+            BlobContainerClient blobContainerClient = new BlobClientBuilder()
+                    .connectionString(connectionString)
+                    .containerName(containerName)
+                    .buildClient().getContainerClient();
 
-            if (file.exists()) {
-                Map<String, Long> response = new HashMap<>();
-                response.put("size", file.length()); // Size in bytes
-                return ResponseEntity.ok(response);
-            } else {
-                // If the file does not exist, return a size of 0 with an appropriate message
+            // Get the blob properties
+            BlobProperties properties = blobContainerClient.getBlobClient(fileName).getProperties();
+
+            // Prepare response with file size
+            Map<String, Long> response = new HashMap<>();
+            response.put("size", properties.getBlobSize()); // Size in bytes
+            return ResponseEntity.ok(response);
+        } catch (BlobStorageException e) {
+            // Handle not found error
+            if (e.getStatusCode() == 404) {
                 Map<String, Long> response = new HashMap<>();
                 response.put("size", 0L); // File not found, size is 0
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
             }
+            // Handle other errors
+            Map<String, Long> response = new HashMap<>();
+            response.put("size", 0L); // Error occurred, size is 0
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         } catch (Exception e) {
-            // Return size as 0 in case of error
+            // Handle any other exceptions
             Map<String, Long> response = new HashMap<>();
             response.put("size", 0L); // Error occurred, size is 0
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
