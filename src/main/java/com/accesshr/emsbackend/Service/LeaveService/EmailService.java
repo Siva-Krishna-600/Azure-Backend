@@ -103,10 +103,10 @@ public class EmailService {
                 // Action Buttons Section
                 "<div style=\"margin-bottom: 20px;\">" +
                 "<p style=\"color: #555; font-size: 14px; line-height: 1.5;\">Please click one of the options below to approve or reject the leave request:</p>" +
-                "<a href=\"https://teamwebappfrontend.azurewebsites.net/leave/approve/" + leaveRequest.getId() + "\" style=\"display: inline-block; background-color: #4CAF50; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; margin-right: 10px; margin-top: 10px; text-align: center; font-size: 16px; transition: background-color 0.3s;\">" +
+                "<a href=\"https://teamwebappfrontend.azurewebsites.net/LeaveManagement + "\" style=\"display: inline-block; background-color: #4CAF50; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; margin-right: 10px; margin-top: 10px; text-align: center; font-size: 16px; transition: background-color 0.3s;\">" +
                 "Approve Leave" +
                 "</a>" +
-                "<a href=\"https://teamwebappfrontend.azurewebsites.net/leave/reject/" + leaveRequest.getId() + "\" style=\"display: inline-block; background-color: #f44336; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; margin-top: 10px; text-align: center; font-size: 16px; transition: background-color 0.3s;\">" +
+                "<a href=\"https://teamwebappfrontend.azurewebsites.net/LeaveManagement + "\" style=\"display: inline-block; background-color: #f44336; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; margin-top: 10px; text-align: center; font-size: 16px; transition: background-color 0.3s;\">" +
                 "Reject Leave" +
                 "</a>" +
                 "</div>" +
